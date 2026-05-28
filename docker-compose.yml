@@ -1,0 +1,61 @@
+# HFC - Quản lý Báo cáo Chất được Kiểm soát
+# ─────────────────────────────────────────────
+# Synology NAS: /volume2/docker/hfc/
+# Port: 7000 (LAN) → Cloudflare Tunnel → https://hfc.tlserver.pro.vn
+#
+# Two web modes:
+#   A) Volume-mount (fast update, no rebuild):
+#        volumes: ./dist:/usr/share/nginx/html:ro
+#   B) Multi-stage build (CI/CD, self-contained):
+#        build: .
+#
+# Current: Mode A (volume-mount) for Synology quick deploy
+
+services:
+  web:
+    image: nginx:1.25-alpine
+    container_name: hfc-web
+    restart: unless-stopped
+    ports:
+      - "7000:80"
+    volumes:
+      - ./dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - state-api
+      - pdf-api
+    networks:
+      - hfc-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/index.html"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+
+  state-api:
+    build: ./state-api
+    container_name: hfc-state-api
+    restart: unless-stopped
+    environment:
+      - DATA_DIR=/data
+      - NODE_ENV=production
+    volumes:
+      - ./data:/data
+    networks:
+      - hfc-net
+
+  pdf-api:
+    build: ./pdf-api
+    container_name: hfc-pdf-api
+    restart: unless-stopped
+    environment:
+      - DATA_DIR=/data
+      - TESSERACT_LANG=vie+eng
+    volumes:
+      - ./data:/data
+    networks:
+      - hfc-net
+
+networks:
+  hfc-net:
+    driver: bridge
